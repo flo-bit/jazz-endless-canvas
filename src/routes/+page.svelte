@@ -3,7 +3,7 @@
 	import { CoState } from 'jazz-svelte';
 	import { Counter, PaintingPaths } from '$lib/schema';
 	import { Group } from 'jazz-tools';
-	import { Button, Heading, Modal, Paragraph, Prose } from '@fuxui/base';
+	import { Alert, Button, Heading, Modal, Paragraph, Prose } from '@fuxui/base';
 
 	// $effect(() => {
 	// 	console.log('painting', painting);
@@ -53,17 +53,19 @@
 
 		<p>This is an experiment of a shared canvas, that anyone can draw on.</p>
 
-			<h3>Controls:</h3>
+		<h3>Controls:</h3>
 
-			<ul>
-				<li>Click "Random point" to jump to a random drawn point in the canvas</li>
-				<li>
-					Move around by selecting the "move" tool and dragging the canvas around (or use w, a, s, d)
-				</li>
-				<li>Select the "paint" tool to draw on the canvas (you can also
-					change the color and stroke width)</li>
-					<li>Send this website to your friends to draw together</li>
-			</ul>
+		<ul>
+			<li>Click "Random point" to jump to a random drawn point in the canvas</li>
+			<li>
+				Move around by selecting the "move" tool and dragging the canvas around (or use w, a, s, d)
+			</li>
+			<li>
+				Select the "paint" tool to draw on the canvas (you can also change the color and stroke
+				width)
+			</li>
+			<li>Send this website to your friends to draw together</li>
+		</ul>
 
 		<p>
 			built with <a href="https://jazz.tools" target="_blank">jazz</a>,
@@ -76,5 +78,9 @@
 				>source code</a
 			>
 		</p>
+
+		<div class="flex justify-end">
+			<Button class="mt-4" onclick={() => (isOpen = false)}>Start drawing</Button>
+		</div>
 	</Prose>
 </Modal>
