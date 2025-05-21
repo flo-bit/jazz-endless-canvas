@@ -599,7 +599,7 @@
 				</svg>
 			</ToggleGroupItem>
 
-			<ToggleGroupItem value="fill">
+			<!-- <ToggleGroupItem value="fill">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					width="24"
@@ -617,7 +617,7 @@
 						d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"
 					/></svg
 				>
-			</ToggleGroupItem>
+			</ToggleGroupItem> -->
 		</ToggleGroup>
 
 		<Popover side="bottom" bind:open={isOpen}>

@@ -42,7 +42,7 @@
 	// co_zfasJeym9uvhBJ9mKnnaNJAVyjp
 
 	let painting = $derived(
-		new CoState(Painting, 'co_zWoTxwCotTMzdfP4hNSuRKU3X33')
+		new CoState(Painting, 'co_zATqzofqYQcNxDQniA4mK1t4i9C')
 	);
 
 	let isOpen = $state(true);
