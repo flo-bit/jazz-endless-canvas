@@ -43,8 +43,8 @@
 		"@sveltejs/adapter-static": "^3.0.8",
 		"@use-gesture/vanilla": "^10.3.1",
 		"jazz-inspector-element": "^0.14.0",
-		"jazz-svelte": "^0.14.0",
-		"jazz-tools": "^0.14.0",
+		"jazz-svelte": "^0.14.4",
+		"jazz-tools": "^0.14.4",
 		"paper": "^0.12.18"
 	},
 	"license": "MIT"

@@ -1,29 +1,47 @@
-import { coField, CoMap, CoList } from 'jazz-tools';
+import { co, z } from 'jazz-tools';
 
-export class Point extends CoMap {
-	x = coField.number;
-	y = coField.number;
-}
+const Point = z.object({
+	x: z.number(),
+	y: z.number()
+});
 
-export class Segment extends CoMap {
-	point = coField.ref(Point);
-	handleIn = coField.ref(Point);
-	handleOut = coField.ref(Point);
-}
+export const Path = co.map({
+	segments: z.array(
+		z.object({
+			point: Point,
+			handleIn: Point,
+			handleOut: Point
+		})
+	),
+	strokeColor: z.string(),
+	strokeWidth: z.number()
+});
 
-export class Segments extends CoList.Of(coField.ref(Segment)) {}
+export const PaintingPaths = co.list(Path);
 
-export class Path extends CoMap {
-	segments = coField.ref(Segments);
-	strokeColor = coField.string;
-	strokeWidth = coField.number;
-}
+export const PaintingCell = co.map({
+	paths: PaintingPaths
+});
 
-export class PaintingPaths extends CoList.Of(coField.ref(Path)) {}
+export const PaintingCells = co.record(z.string(), PaintingCell);
 
-export class Counter extends CoMap {
-	painting = coField.ref(PaintingPaths);
-	count = coField.number;
-}
+export const Painting = co.map({
+	cells: PaintingCells
+});
 
-export class Paintings extends CoList.Of(coField.ref(Counter)) {}
+export const MyAppAccount = co.account({
+	profile: co.profile(),
+	root: co.map({})
+});
+
+export const cellSize = 1000;
+
+export const gridId = (x: number, y: number): string => {
+	return `${Math.floor(x)}/${Math.floor(y)}`;
+};
+
+export const indexFromGridId = (gridId: string): { x: number; y: number } | undefined => {
+	if (!gridId?.includes('/')) return undefined;
+	const [xIndex, yIndex] = gridId.split('/').map(Number);
+	return { x: xIndex, y: yIndex };
+};

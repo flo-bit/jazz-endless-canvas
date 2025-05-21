@@ -1,119 +1,235 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import paper from 'paper';
-	import { Counter, PaintingPaths, Path, Point, Segment, Segments } from '$lib/schema';
-	import { CoState } from 'jazz-svelte';
-	import { Group } from 'jazz-tools';
+	import { Group, type Loaded } from 'jazz-tools';
 	import { ColorPicker } from '@fuxui/colors';
 	import {
+		Box,
 		Button,
 		cn,
 		Popover,
 		SliderNumber,
 		Subheading,
-		toast,
 		ToggleGroup,
 		ToggleGroupItem
 	} from '@fuxui/base';
-	import { base } from '$app/paths';
+	import NumberFlow from '@number-flow/svelte';
 
 	import { PinchGesture } from '@use-gesture/vanilla';
+	import { cellSize, gridId, PaintingCell, PaintingPaths, Path, Painting } from '$lib/schema';
 
-	let { painting }: { painting: CoState<Counter> } = $props();
+	let { painting }: { painting: Loaded<typeof Painting> } = $props();
 
-	let tool: paper.Tool | null = null;
+	let moveTool: paper.Tool | null = null;
+	let drawTool: paper.Tool | null = null;
+
 	let path: paper.Path | null = null;
 	let scope: paper.PaperScope | null = null;
-	let drawnPaths: { [key: string]: paper.Path } = $state({});
 	let currentColor = $state('#ec4899');
-	let subscription = $state(null);
 
-	$effect(() => {
-		if (subscription || !painting.current?.painting) return;
+	let loaded = $state(false);
 
-		PaintingPaths.subscribe(
-			painting.current.painting.id,
+	let gridData: Record<
+		string,
+		{
+			unsubscribe?: () => void;
+			drawnPaths?: Record<string, paper.Path>;
+			group?: paper.Group;
+		}
+	> = $state({});
+
+	function addSubscription(id: string) {
+		if (!painting || !painting.cells || !painting.cells[id]?.paths || gridData[id]?.unsubscribe) {
+			return;
+		}
+
+		const sub = PaintingPaths.subscribe(
+			painting.cells[id]?.paths.id,
 			{
 				resolve: {
-					$each: {
-						segments: {
-							$each: {
-								point: true,
-								handleIn: true,
-								handleOut: true
-							}
-						}
-					}
+					$each: true
 				}
 			},
 			(painting) => {
-				// get all paths
-				for (let path of painting ?? []) {
-					if (!path || drawnPaths[path.id]) continue;
-
-					drawnPaths[path.id] = new paper.Path();
-					drawnPaths[path.id].strokeColor = path.strokeColor as unknown as paper.Color;
-					drawnPaths[path.id].strokeWidth = path.strokeWidth;
-
-					for (let segment of path.segments ?? []) {
-						if (!segment) continue;
-
-						scope?.activate();
-
-						let segmentPoint = new paper.Segment({
-							point: new paper.Point(segment.point.x, segment.point.y),
-							handleIn: new paper.Point(segment.handleIn.x, segment.handleIn.y),
-							handleOut: new paper.Point(segment.handleOut.x, segment.handleOut.y)
-						});
-
-						drawnPaths[path.id].add(segmentPoint);
-					}
-				}
+				addPath(painting, id);
 			}
 		);
+		// console.log('added subscription', id);
+
+		gridData[id] ??= {};
+
+		if (gridData[id].group) {
+			gridData[id].group.visible = true;
+		}
+
+		gridData[id].unsubscribe = sub;
+	}
+
+	function removeSubscription(id: string) {
+		if (!gridData[id]?.unsubscribe) return;
+
+		gridData[id].unsubscribe();
+		// console.log('removed subscription', id);
+		gridData[id].unsubscribe = undefined;
+
+		if (gridData[id].group) {
+			gridData[id].group.visible = false;
+		}
+	}
+
+	function addPath(painting: Loaded<typeof PaintingPaths>, id: string) {
+		loaded = true;
+
+		gridData[id] ??= {};
+		gridData[id].drawnPaths ??= {};
+		gridData[id].group ??= new paper.Group();
+
+		let drawnPaths = gridData[id].drawnPaths;
+		let group = gridData[id].group;
+
+		for (let path of painting ?? []) {
+			if (!path || drawnPaths[path.id]) continue;
+
+			drawnPaths[path.id] = new paper.Path();
+			drawnPaths[path.id].strokeColor = path.strokeColor as unknown as paper.Color;
+			drawnPaths[path.id].strokeWidth = path.strokeWidth;
+
+			group.addChild(drawnPaths[path.id]);
+
+			for (let segment of path.segments ?? []) {
+				if (!segment) continue;
+
+				scope?.activate();
+
+				let segmentPoint = new paper.Segment({
+					point: new paper.Point(segment.point.x, segment.point.y),
+					handleIn: new paper.Point(segment.handleIn.x, segment.handleIn.y),
+					handleOut: new paper.Point(segment.handleOut.x, segment.handleOut.y)
+				});
+
+				drawnPaths[path.id].add(segmentPoint);
+			}
+		}
+	}
+
+	function drawGrid() {
+		let color = '#27272a' as unknown as paper.Color;
+		for (let x = -500; x < 500; x++) {
+			let topPoint = new paper.Point((x * cellSize) / 5, cellSize * -100);
+			let bottomPoint = new paper.Point((x * cellSize) / 5, cellSize * 100);
+			let aLine = new paper.Path.Line(topPoint, bottomPoint);
+			aLine.strokeColor = color;
+			aLine.strokeWidth = x % 5 === 0 ? 4 : 1;
+
+			let leftPoint = new paper.Point(cellSize * -100, (x * cellSize) / 5);
+			let rightPoint = new paper.Point(cellSize * 100, (x * cellSize) / 5);
+			let bLine = new paper.Path.Line(leftPoint, rightPoint);
+			bLine.strokeColor = color;
+			bLine.strokeWidth = x % 5 === 0 ? 4 : 1;
+		}
+	}
+
+	$effect(() => {
+		if (!gridData[gridId(0, 0)] && painting && painting.cells) {
+			updatedPosition();
+		}
 	});
 
-	let isDragging = false;
-	let lastTouch = { x: 0, y: 0 };
-	let currentPosition = { x: 0, y: 0 };
+	onDestroy(() => {
+		for (let id in gridData) {
+			if (gridData[id]?.unsubscribe) {
+				gridData[id].unsubscribe();
+				delete gridData[id];
+			}
+		}
+	});
 
-	// const handleTouchStart = (event: TouchEvent) => {
-	// 	if (event.touches.length === 2) {
-	// 		// Start dragging, record initial touch points
-	// 		isDragging = true;
-	// 		lastTouch.x = event.touches[0].pageX - currentPosition.x;
-	// 		lastTouch.y = event.touches[0].pageY - currentPosition.y;
-	// 	}
-	// };
+	function getCellBounds() {
+		let bounds = scope?.view.bounds;
+		if (!bounds) return;
 
-	// const handleTouchMove = (event: TouchEvent) => {
-	// 	if (isDragging && event.touches.length === 2) {
-	// 		// Calculate the new position based on finger movement
-	// 		currentPosition.x = event.touches[0].pageX - lastTouch.x;
-	// 		currentPosition.y = event.touches[0].pageY - lastTouch.y;
+		let topY = Math.floor(bounds.y / cellSize);
+		let bottomY = Math.floor((bounds.y + bounds.height) / cellSize);
+		let leftX = Math.floor(bounds.x / cellSize);
+		let rightX = Math.floor((bounds.x + bounds.width) / cellSize);
 
-	// 		scope?.view.translate(currentPosition);
-	// 	}
-	// };
+		return {
+			top: topY,
+			bottom: bottomY,
+			left: leftX,
+			right: rightX
+		};
+	}
 
-	// const handleTouchEnd = (event: TouchEvent) => {
-	// 	if (event.touches.length < 2) {
-	// 		// End dragging when fewer than two fingers are on the screen
-	// 		isDragging = false;
-	// 	}
-	// };
+	function updatedPosition() {
+		// get visible bounds
+		let bounds = getCellBounds();
+		if (!bounds) return;
+
+		// console.log('updated position', bounds);
+
+		let visibleCells = new Set<string>();
+		for (let x = bounds.left; x <= bounds.right; x++) {
+			for (let y = bounds.top; y <= bounds.bottom; y++) {
+				addSubscription(gridId(x, y));
+				visibleCells.add(gridId(x, y));
+			}
+		}
+
+		for (let id in gridData) {
+			if (!visibleCells.has(id)) {
+				removeSubscription(id);
+			}
+		}
+
+		currentX = (scope?.view.center.x ?? 0) / cellSize;
+		currentY = (scope?.view.center.y ?? 0) / cellSize;
+	}
+
+	function onZoom(delta: number, origin: number[]) {
+		if (!scope) return;
+
+		let newZoom = scope.view.zoom;
+		let oldZoom = scope.view.zoom;
+
+		newZoom = scope.view.zoom + delta;
+
+		newZoom = Math.max(0.1, newZoom);
+		newZoom = Math.min(5, newZoom);
+
+		let beta = oldZoom / newZoom;
+
+		let mousePosition = new paper.Point(origin[0], origin[1]);
+
+		let viewPosition = scope.view.viewToProject(mousePosition);
+
+		let mpos = viewPosition;
+		let ctr = scope.view.center;
+
+		let pc = mpos.subtract(ctr);
+		let offset = mpos.subtract(pc.multiply(beta)).subtract(ctr);
+
+		scope.view.zoom = newZoom;
+		scope.view.center = scope.view.center.add(offset);
+
+		updatedPosition();
+	}
 
 	onMount(async () => {
 		if (!canvas) {
 			return;
 		}
 
+		setInterval(() => {
+			updatedPosition();
+		}, 2000);
+
 		document.addEventListener('gesturestart', (e) => e.preventDefault());
 		document.addEventListener('gesturechange', (e) => e.preventDefault());
 
 		scope = new paper.PaperScope();
 		scope.setup(canvas);
-		tool = new paper.Tool();
+		drawTool = new paper.Tool();
 
 		let move = 40;
 		window.addEventListener('keydown', (e) => {
@@ -140,38 +256,18 @@
 			}
 		});
 
-		let startMatrix: paper.Matrix;
-		let startMatrixInverted: paper.Matrix;
-		let p0ProjectCoords: paper.Point;
-
-		function getCenterPoint(e: any) {
-			return new paper.Point(e.origin[0], e.origin[1]);
-		}
-
 		const gesture = new PinchGesture(canvas, (e) => {
 			isOpen = false;
-			if(!scope)return;
-			console.log(e);
-
-			// if (e.first) {
-			// 	startMatrix = scope.view.matrix.clone();
-			// 	startMatrixInverted = startMatrix.inverted();
-			// 	const p0 = new paper.Point(e.origin[0], e.origin[1]);
-			// 	p0ProjectCoords = scope.view.viewToProject(p0);
-			// } else if (!e.last) {
-			// 	const p = new paper.Point(e.origin[0], e.origin[1]);
-			// 	const pProject0 = p.transform(startMatrixInverted);
-			// 	let currentScale = scope.view.scaling.x ?? 1;
-			// 	const delta = pProject0.subtract(p0ProjectCoords).divide(currentScale + e.delta[0]);
-			// 	scope.view.matrix = startMatrix.clone().scale(currentScale + e.delta[0], p0ProjectCoords).translate(delta);
-			// }
+			if (!scope) return;
+			onZoom(e.delta[0], e.origin);
 		});
 
-		tool.onMouseDown = (event: paper.ToolEvent) => {
-			isOpen = false;
-			if (event.modifiers.shift || selectedTool === 'move') {
+		drawTool.onMouseDown = (event: paper.ToolEvent) => {
+			if (path) {
+				finishPath();
 				return;
 			}
+			isOpen = false;
 
 			scope?.activate();
 
@@ -182,12 +278,8 @@
 			path.add(event.point);
 		};
 
-		tool.onMouseDrag = (event: paper.ToolEvent) => {
+		drawTool.onMouseDrag = (event: paper.ToolEvent) => {
 			isOpen = false;
-			if (event.modifiers.shift || selectedTool === 'move') {
-				scope?.view.translate(event.delta);
-				return;
-			}
 
 			if (path === null) {
 				return;
@@ -197,71 +289,24 @@
 			path.add(event.point);
 		};
 
-		tool.onMouseUp = (event: paper.ToolEvent) => {
-			if (event.modifiers.shift || path === null) {
-				return;
-			}
-
-			scope?.activate();
-
-			path.simplify(10);
-
-			const group = Group.create();
-			group.addMember('everyone', 'writer');
-
-			// add path to painting
-			let coSegments = Segments.create([], group);
-			let coPath = Path.create(
-				{
-					segments: coSegments,
-					strokeColor: currentColor,
-					strokeWidth: strokeWidth
-				},
-				group
-			);
-			for (let segment of path.segments) {
-				const position = Point.create(
-					{
-						x: segment.point.x,
-						y: segment.point.y
-					},
-					group
-				);
-				const handleIn = Point.create(
-					{
-						x: segment.handleIn.x,
-						y: segment.handleIn.y
-					},
-					group
-				);
-				const handleOut = Point.create(
-					{
-						x: segment.handleOut.x,
-						y: segment.handleOut.y
-					},
-					group
-				);
-				coSegments.push(
-					Segment.create(
-						{
-							point: position,
-							handleIn: handleIn,
-							handleOut: handleOut
-						},
-						group
-					)
-				);
-			}
-
-			drawnPaths[coPath.id] = path;
-
-			painting.current?.painting?.push(coPath);
-			if (painting.current) {
-				painting.current.count += 1;
-			}
-
-			path = null;
+		drawTool.onMouseUp = (event: paper.ToolEvent) => {
+			finishPath();
 		};
+
+		moveTool = new paper.Tool();
+
+		moveTool.onMouseDrag = function (event: any) {
+			if (!scope) return;
+
+			var pan_offset = event.point.subtract(event.downPoint);
+			scope.view.center = scope.view.center.subtract(pan_offset);
+
+			updatedPosition();
+		};
+
+		scope.tool = moveTool;
+
+		drawGrid();
 	});
 
 	let canvas: HTMLCanvasElement | null = null;
@@ -277,6 +322,67 @@
 	let selectedTool = $state('move');
 
 	let isOpen = $state(false);
+
+	function finishPath() {
+		if (!path) return;
+
+		scope?.activate();
+
+		path.simplify(10);
+
+		const group = Group.create();
+		group.addMember('everyone', 'writer');
+
+		let coPath = Path.create(
+			{
+				segments: path.segments.map((segment) => {
+					return {
+						point: {
+							x: segment.point.x,
+							y: segment.point.y
+						},
+						handleIn: {
+							x: segment.handleIn.x,
+							y: segment.handleIn.y
+						},
+						handleOut: {
+							x: segment.handleOut.x,
+							y: segment.handleOut.y
+						}
+					};
+				}),
+				strokeColor: currentColor,
+				strokeWidth: strokeWidth
+			},
+			group
+		);
+
+		let gridIdX = Math.floor(path.segments[0].point.x / cellSize);
+		let gridIdY = Math.floor(path.segments[0].point.y / cellSize);
+
+		let id = gridId(gridIdX, gridIdY);
+
+		gridData[id] ??= {};
+		gridData[id].drawnPaths ??= {};
+		gridData[id].drawnPaths[coPath.id] = path;
+
+		if (!painting.cells) return;
+
+		if (!painting.cells[id]) {
+			painting.cells[id] = PaintingCell.create(
+				{
+					paths: PaintingPaths.create([], group)
+				},
+				group
+			);
+		}
+		painting.cells[id]?.paths?.push(coPath);
+
+		path = null;
+	}
+
+	let currentX = $state(0.0001);
+	let currentY = $state(0.0001);
 </script>
 
 <div class="fixed right-2 bottom-2 z-20 flex flex-col gap-3"></div>
@@ -287,19 +393,19 @@
 		'fixed h-screen w-screen',
 		selectedTool === 'move' ? 'cursor-grab' : 'cursor-crosshair'
 	)}
+	data-paper-resize="true"
 ></canvas>
 
-<!-- ontouchstart={handleTouchStart}
-ontouchmove={handleTouchMove}
-ontouchend={handleTouchEnd} -->
-
-<div class="fixed top-2 left-2 z-20">
+<div class="fixed top-2 left-2 z-20 hidden">
 	<Button
 		onclick={() => {
-			// toast('Link copied to clipboard', {
-			// 	description: 'Send this link to your friends to draw together'
-			// });
-			// navigator.clipboard.writeText(window.location.href);
+			const gridIds = Object.keys(gridData);
+			const randomGridId = gridIds[Math.floor(Math.random() * gridIds.length)];
+
+			if (!gridData[randomGridId]) return;
+
+			let drawnPaths = gridData[randomGridId].drawnPaths;
+			if (!drawnPaths) return;
 
 			// jump to random drawing
 			const numDrawnPaths = Object.keys(drawnPaths).length;
@@ -311,7 +417,7 @@ ontouchend={handleTouchEnd} -->
 			// scope?.view.center.set(new paper.Point(point.x, point.y));
 			// get current translation
 			const translation = scope?.view.center;
-			console.log(translation);
+			// console.log(translation);
 			if (translation) {
 				scope?.view.translate(new paper.Point(translation.x - point.x, translation.y - point.y));
 
@@ -323,9 +429,82 @@ ontouchend={handleTouchEnd} -->
 	>
 		Random point
 	</Button>
+
+	<Button
+		onclick={() => {
+			// add 100 random paths
+			let paths = [];
+			for (let i = 0; i < 100000; i++) {
+				const path = new paper.Path();
+				path.strokeColor = currentColor as unknown as paper.Color;
+				path.strokeWidth = strokeWidth;
+				let rx = Math.random() * 10000 - 5000;
+				let ry = Math.random() * 10000 - 5000;
+				path.add(new paper.Point(rx, ry));
+				path.add(new paper.Point(rx + 50, ry + 50));
+				paths.push(path);
+
+				continue;
+
+				const group = Group.create();
+				group.addMember('everyone', 'writer');
+
+				let coPath = Path.create(
+					{
+						segments: path.segments.map((segment) => {
+							return {
+								point: {
+									x: segment.point.x,
+									y: segment.point.y
+								},
+								handleIn: {
+									x: segment.handleIn.x,
+									y: segment.handleIn.y
+								},
+								handleOut: {
+									x: segment.handleOut.x,
+									y: segment.handleOut.y
+								}
+							};
+						}),
+						strokeColor: currentColor,
+						strokeWidth: strokeWidth
+					},
+					group
+				);
+
+				painting?.paths?.push(coPath);
+			}
+
+			//create new group
+			const pGroup = new paper.Group(paths);
+		}}
+	>
+		Add lots
+	</Button>
 </div>
 
-<div class="absolute top-2 right-2">
+<div class="fixed top-2 left-2 z-20 p-0">
+	<Box class="px-1 py-1">
+		<div class="bg-base-800/50 rounded-2xl px-2">
+			<NumberFlow
+				value={currentX}
+				format={{ minimumFractionDigits: 1, maximumFractionDigits: 1 }}
+			/> /
+			<NumberFlow
+				value={currentY}
+				format={{ minimumFractionDigits: 1, maximumFractionDigits: 1 }}
+			/>
+		</div>
+	</Box>
+</div>
+{#if !painting || !loaded}
+	<div class="pointer-events-none fixed inset-0 flex h-full w-full items-center justify-center">
+		<Subheading>Loading...</Subheading>
+	</div>
+{/if}
+
+<div class="absolute right-2 bottom-2">
 	<div class="bg-base-900 flex items-center justify-center gap-4 rounded-2xl p-2">
 		<ToggleGroup
 			type="single"
@@ -334,7 +513,15 @@ ontouchend={handleTouchEnd} -->
 					return selectedTool;
 				},
 				(value) => {
+					if (!value) return;
+
 					selectedTool = value;
+					if (!scope) return;
+					if (selectedTool === 'move') {
+						scope.tool = moveTool!;
+					} else {
+						scope.tool = drawTool!;
+					}
 				}
 			}
 		>
@@ -403,7 +590,6 @@ ontouchend={handleTouchEnd} -->
 			<ColorPicker
 				bind:rgb={color}
 				onchange={(color) => {
-					console.log(color);
 					currentColor = color.hex;
 				}}
 				quickSelects={[

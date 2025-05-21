@@ -1,21 +1,36 @@
 <script>
-	import Draw from './Draw.svelte';
 	import { CoState } from 'jazz-svelte';
-	import { Counter, PaintingPaths } from '$lib/schema';
+	import {
+		gridId,
+		Painting,
+		PaintingCell,
+		PaintingCells,
+		PaintingPaths
+	} from '$lib/schema';
+	import { Button, Modal, Prose } from '@fuxui/base';
+	import Draw from './Draw.svelte';
 	import { Group } from 'jazz-tools';
-	import { Alert, Button, Heading, Modal, Paragraph, Prose } from '@fuxui/base';
 
 	// $effect(() => {
-	// 	console.log('painting', painting);
+	// 	console.log('painting.current', painting.current);
 	// 	if (painting.current === undefined) {
 	// 		const group = Group.create();
 	// 		group.addMember('everyone', 'writer');
 
-	// 		// create new
-	// 		let newPainting = Counter.create(
+	// 		const id = gridId(0, 0);
+	// 		let newPainting = Painting.create(
 	// 			{
-	// 				painting: PaintingPaths.create([], group),
-	// 				count: 0
+	// 				cells: PaintingCells.create(
+	// 					{
+	// 						[id]: PaintingCell.create(
+	// 							{
+	// 								paths: PaintingPaths.create([], group)
+	// 							},
+	// 							group
+	// 						)
+	// 					},
+	// 					group
+	// 				)
 	// 			},
 	// 			group
 	// 		);
@@ -24,24 +39,16 @@
 	// 	}
 	// });
 
+	// co_zfasJeym9uvhBJ9mKnnaNJAVyjp
+
 	let painting = $derived(
-		new CoState(Counter, 'co_zfasJeym9uvhBJ9mKnnaNJAVyjp', {
-			resolve: {
-				painting: {
-					$each: {
-						segments: {
-							$each: true
-						}
-					}
-				}
-			}
-		})
+		new CoState(Painting, 'co_zWoTxwCotTMzdfP4hNSuRKU3X33')
 	);
 
 	let isOpen = $state(true);
 </script>
 
-<Draw {painting} />
+<Draw painting={painting.current} />
 
 <Button onclick={() => (isOpen = true)} class="fixed bottom-2 left-2 z-10" variant="secondary">
 	Info
@@ -56,7 +63,6 @@
 		<h3>Controls:</h3>
 
 		<ul>
-			<li>Click "Random point" to jump to a random drawn point in the canvas</li>
 			<li>
 				Move around by selecting the "move" tool and dragging the canvas around (or use w, a, s, d)
 			</li>

@@ -1,8 +1,8 @@
 <script lang="ts">
-	import '../app.css';
 	import { Head, Toaster } from '@fuxui/base';
 	import { JazzProvider } from 'jazz-svelte';
-	import { Account } from 'jazz-tools';
+	import { MyAppAccount } from '$lib/schema';
+	import '../app.css';
 
 	let { children } = $props();
 </script>
@@ -11,7 +11,7 @@
 	sync={{
 		peer: `wss://cloud.jazz.tools/?key=flo.bit.dev@gmail.com`
 	}}
-	AccountSchema={Account}
+	AccountSchema={MyAppAccount}
 >
 
 	{@render children()}
