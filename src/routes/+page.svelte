@@ -70,6 +70,7 @@
 				Select the "paint" tool to draw on the canvas (you can also change the color and stroke
 				width)
 			</li>
+			<li>Zoom with + and - or pinch on mobile</li>
 			<li>Send this website to your friends to draw together</li>
 		</ul>
 
