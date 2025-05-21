@@ -14,7 +14,8 @@ export const Path = co.map({
 		})
 	),
 	strokeColor: z.string(),
-	strokeWidth: z.number()
+	strokeWidth: z.number(),
+	filled: z.boolean().optional()
 });
 
 export const PaintingPaths = co.list(Path);
