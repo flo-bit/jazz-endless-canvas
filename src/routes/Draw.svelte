@@ -7,16 +7,28 @@
 		Box,
 		Button,
 		cn,
+		Heading,
+		Input,
+		Modal,
 		Popover,
 		SliderNumber,
 		Subheading,
+		toast,
 		ToggleGroup,
 		ToggleGroupItem
 	} from '@fuxui/base';
 	import NumberFlow from '@number-flow/svelte';
 
 	import { PinchGesture } from '@use-gesture/vanilla';
-	import { cellSize, gridId, PaintingCell, PaintingPaths, Path, Painting } from '$lib/schema';
+	import {
+		cellSize,
+		gridId,
+		PaintingCell,
+		PaintingPaths,
+		Path,
+		Painting,
+		indexFromGridId
+	} from '$lib/schema';
 
 	let { painting }: { painting: Loaded<typeof Painting> } = $props();
 
@@ -118,20 +130,26 @@
 		}
 	}
 
+	let grid: paper.Group | null = null;
+
 	function drawGrid() {
 		let color = '#27272a' as unknown as paper.Color;
-		for (let x = -500; x < 500; x++) {
-			let topPoint = new paper.Point((x * cellSize) / 5, cellSize * -100);
-			let bottomPoint = new paper.Point((x * cellSize) / 5, cellSize * 100);
+		grid = new paper.Group();
+		for (let x = -50; x < 50; x++) {
+			let topPoint = new paper.Point((x * cellSize) / 5, cellSize * -50);
+			let bottomPoint = new paper.Point((x * cellSize) / 5, cellSize * 50);
 			let aLine = new paper.Path.Line(topPoint, bottomPoint);
 			aLine.strokeColor = color;
 			aLine.strokeWidth = x % 5 === 0 ? 4 : 1;
 
-			let leftPoint = new paper.Point(cellSize * -100, (x * cellSize) / 5);
-			let rightPoint = new paper.Point(cellSize * 100, (x * cellSize) / 5);
+			let leftPoint = new paper.Point(cellSize * -50, (x * cellSize) / 5);
+			let rightPoint = new paper.Point(cellSize * 50, (x * cellSize) / 5);
 			let bLine = new paper.Path.Line(leftPoint, rightPoint);
 			bLine.strokeColor = color;
 			bLine.strokeWidth = x % 5 === 0 ? 4 : 1;
+
+			grid.addChild(aLine);
+			grid.addChild(bLine);
 		}
 	}
 
@@ -154,10 +172,10 @@
 		let bounds = scope?.view.bounds;
 		if (!bounds) return;
 
-		let topY = Math.floor(bounds.y / cellSize) - 5;
-		let bottomY = Math.floor((bounds.y + bounds.height) / cellSize) + 5;
-		let leftX = Math.floor(bounds.x / cellSize) - 5;
-		let rightX = Math.floor((bounds.x + bounds.width) / cellSize) + 5;
+		let topY = Math.floor(bounds.y / cellSize) - 2;
+		let bottomY = Math.floor((bounds.y + bounds.height) / cellSize) + 2;
+		let leftX = Math.floor(bounds.x / cellSize) - 2;
+		let rightX = Math.floor((bounds.x + bounds.width) / cellSize) + 2;
 
 		return {
 			top: topY,
@@ -190,6 +208,13 @@
 
 		currentX = (scope?.view.center.x ?? 0) / cellSize;
 		currentY = (scope?.view.center.y ?? 0) / cellSize;
+
+		if (grid) {
+			// move grid to center on current position
+			let x = Math.floor((scope?.view.center.x ?? 0) / cellSize) * cellSize;
+			let y = Math.floor((scope?.view.center.y ?? 0) / cellSize) * cellSize;
+			grid.position = new paper.Point(x, y);
+		}
 	}
 
 	function onZoom(delta: number, origin: number[]) {
@@ -200,7 +225,7 @@
 
 		newZoom = scope.view.zoom + delta;
 
-		newZoom = Math.max(0.1, newZoom);
+		newZoom = Math.max(0.15, newZoom);
 		newZoom = Math.min(5, newZoom);
 
 		let beta = oldZoom / newZoom;
@@ -415,6 +440,10 @@
 
 	let currentX = $state(0.0001);
 	let currentY = $state(0.0001);
+
+	let coordinatesOpen = $state(false);
+	let xCoordinate = $state('0');
+	let yCoordinate = $state('0');
 </script>
 
 <div class="fixed right-2 bottom-2 z-20 flex flex-col gap-3"></div>
@@ -429,39 +458,6 @@
 ></canvas>
 
 <div class="fixed top-2 left-2 z-20 hidden">
-	<Button
-		onclick={() => {
-			const gridIds = Object.keys(gridData);
-			const randomGridId = gridIds[Math.floor(Math.random() * gridIds.length)];
-
-			if (!gridData[randomGridId]) return;
-
-			let drawnPaths = gridData[randomGridId].drawnPaths;
-			if (!drawnPaths) return;
-
-			// jump to random drawing
-			const numDrawnPaths = Object.keys(drawnPaths).length;
-			const randomIndex = Math.floor(Math.random() * numDrawnPaths);
-
-			const randomPathId = Object.keys(drawnPaths)[randomIndex];
-			const point = drawnPaths[randomPathId].segments[0].point;
-
-			// scope?.view.center.set(new paper.Point(point.x, point.y));
-			// get current translation
-			const translation = scope?.view.center;
-			// console.log(translation);
-			if (translation) {
-				scope?.view.translate(new paper.Point(translation.x - point.x, translation.y - point.y));
-
-				// scale to 1
-				// const currentScale = scope?.view.scaling ?? 1;
-				// scope?.view.scale(1 / currentScale, new paper.Point(point.x, point.y));
-			}
-		}}
-	>
-		Random point
-	</Button>
-
 	<Button
 		onclick={() => {
 			// add 100 random paths
@@ -516,19 +512,79 @@
 	</Button>
 </div>
 
-<div class="fixed top-2 left-2 z-20 p-0">
-	<Box class="px-1 py-1">
-		<div class="bg-base-800/50 rounded-2xl px-2">
-			<NumberFlow
-				value={currentX}
-				format={{ minimumFractionDigits: 1, maximumFractionDigits: 1 }}
-			/> /
-			<NumberFlow
-				value={currentY}
-				format={{ minimumFractionDigits: 1, maximumFractionDigits: 1 }}
-			/>
-		</div>
-	</Box>
+<Modal bind:open={coordinatesOpen}>
+	<div class="flex flex-col gap-8 items-center">
+		<Heading>Enter coordinates</Heading>
+
+		<form
+			class="flex flex-col gap-2 items-center"
+			onsubmit={() => {
+				if (!scope) return;
+
+				let x = parseFloat(xCoordinate);
+				let y = parseFloat(yCoordinate);
+
+				if (isNaN(x) || isNaN(y)) {
+					toast.error('Invalid coordinates');
+					return;
+				}
+
+				scope.view.center = new paper.Point(x * cellSize, y * cellSize);
+
+				updatedPosition();
+
+				coordinatesOpen = false;
+			}}
+		>
+			<div class="flex max-w-40 gap-2">
+				<Input bind:value={xCoordinate} class="w-1/2" />
+				<Input bind:value={yCoordinate} class="w-1/2" />
+			</div>
+
+			<Button type="submit">Jump to coordinates</Button>
+		</form>
+	</div>
+</Modal>
+
+<div class="fixed top-2 left-2 z-20 flex gap-2 p-0">
+	<button
+		onclick={() => {
+			coordinatesOpen = true;
+		}}
+		class="cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-90"
+	>
+		<Box class="px-1 py-1">
+			<div class="bg-base-800/50 rounded-2xl px-2">
+				<NumberFlow
+					value={currentX}
+					format={{ minimumFractionDigits: 1, maximumFractionDigits: 1 }}
+				/> /
+				<NumberFlow
+					value={currentY}
+					format={{ minimumFractionDigits: 1, maximumFractionDigits: 1 }}
+				/>
+			</div>
+		</Box>
+	</button>
+
+	<Button
+		variant="secondary"
+		onclick={() => {
+			let cellIds = Object.keys(painting?.cells ?? {});
+			// console.log(cellIds);
+			let randomCellId = cellIds[Math.floor(Math.random() * cellIds.length)];
+
+			let cell = indexFromGridId(randomCellId);
+
+			if (!cell || !scope) return;
+
+			scope.view.center = new paper.Point(cell.x * cellSize, cell.y * cellSize);
+
+			updatedPosition();
+		}}
+	>
+		Jump to random point
+	</Button>
 </div>
 {#if !painting || !loaded}
 	<div class="pointer-events-none fixed inset-0 flex h-full w-full items-center justify-center">
