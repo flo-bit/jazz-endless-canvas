@@ -215,6 +215,8 @@
 		updatedPosition();
 	}
 
+	let isZooming = false;
+
 	onMount(async () => {
 		if (!canvas) {
 			return;
@@ -259,14 +261,31 @@
 		const gesture = new PinchGesture(canvas, (e) => {
 			isOpen = false;
 			if (!scope) return;
+
+			if (e.first) {
+				isZooming = true;
+			}
+
+			if (e.last) {
+				isZooming = false;
+			}
+
 			onZoom(e.delta[0], e.origin);
+
+			if (path) {
+				// remove path
+				path.remove();
+				path = null;
+			}
 		});
 
 		drawTool.onMouseDown = (event: paper.ToolEvent) => {
-			if (path) {
-				finishPath();
-				return;
-			}
+			if(isZooming) return;
+
+			// if (path) {
+			// 	finishPath();
+			// 	return;
+			// }
 			isOpen = false;
 
 			scope?.activate();
@@ -281,7 +300,7 @@
 		drawTool.onMouseDrag = (event: paper.ToolEvent) => {
 			isOpen = false;
 
-			if (path === null) {
+			if (path === null || isZooming) {
 				return;
 			}
 			scope?.activate();
@@ -290,6 +309,8 @@
 		};
 
 		drawTool.onMouseUp = (event: paper.ToolEvent) => {
+			if (isZooming) return;
+			
 			finishPath();
 		};
 
