@@ -288,9 +288,9 @@
 				scope?.view.translate(new paper.Point(-move, 0));
 			}
 
-			if (e.key === '-') {
+			if (e.key === '+') {
 				onZoom(0.2, [window.innerWidth / 2, window.innerHeight / 2]);
-			} else if (e.key === '+') {
+			} else if (e.key === '-') {
 				onZoom(-0.2, [window.innerWidth / 2, window.innerHeight / 2]);
 			}
 		});
