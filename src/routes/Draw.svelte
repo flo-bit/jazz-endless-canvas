@@ -255,7 +255,7 @@
 
 		setInterval(() => {
 			updatedPosition();
-		}, 2000);
+		}, 200);
 
 		document.addEventListener('gesturestart', (e) => e.preventDefault());
 		document.addEventListener('gesturechange', (e) => e.preventDefault());
@@ -319,6 +319,9 @@
 		drawTool.onMouseDown = (event: paper.ToolEvent) => {
 			if (isZooming) return;
 
+			if (event.modifiers.shift) {
+				return;
+			}
 			// if (path) {
 			// 	finishPath();
 			// 	return;
@@ -336,6 +339,15 @@
 
 		drawTool.onMouseDrag = (event: paper.ToolEvent) => {
 			isOpen = false;
+
+			// if shift is down
+			if (event.modifiers.shift) {
+				if (!scope) return;
+				var pan_offset = event.point.subtract(event.downPoint);
+				scope.view.center = scope.view.center.subtract(pan_offset);
+
+				return;
+			}
 
 			if (path === null || isZooming) {
 				return;
@@ -365,6 +377,16 @@
 		scope.tool = moveTool;
 
 		drawGrid();
+
+		// move center to random point between -5 and 5
+		let max = 10;
+		let rx = Math.random() * max * 2 - max;
+		let ry = Math.random() * max * 2 - max;
+		scope.view.center = new paper.Point(rx * cellSize, ry * cellSize);
+
+		// zoom out
+		scope.view.zoom = 0.3;
+		updatedPosition();
 	});
 
 	let canvas: HTMLCanvasElement | null = null;
@@ -519,11 +541,11 @@
 </div>
 
 <Modal bind:open={coordinatesOpen}>
-	<div class="flex flex-col gap-8 items-center">
+	<div class="flex flex-col items-center gap-8">
 		<Heading>Enter coordinates</Heading>
 
 		<form
-			class="flex flex-col gap-2 items-center"
+			class="flex flex-col items-center gap-2"
 			onsubmit={() => {
 				if (!scope) return;
 
